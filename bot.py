@@ -65,8 +65,8 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             user_states[user_id] = {
                 "input_video": input_video,
-                "voice": "my-MM-NilarNeural",  # Default voice
-                "speed": "+0%Hz"              # Default speed
+                "voice": "my-MM-NilarNeural",
+                "rate": "+0%"
             }
 
             await msg.edit_text(
@@ -91,15 +91,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         user_states[user_id]["burmese_text"] = update.message.text
 
-        # 🎛️ အသံနှင့် အမြန်နှုန်း ရွေးချယ်ရန် ခလုတ်များ (Inline Keyboards)
         keyboard = [
             [
                 InlineKeyboardButton("👩‍🦰 Nilar (မိန်းကလေးသံ)", callback_data="voice_nilar"),
-                InlineKeyboardButton("👨‍💼 Thiha (ယောကျ်ားလေးသံ)", callback_data="voice_thiha")
+                InlineKeyboardButton("👨‍💼 WinTun (ယောကျ်ားလေးသံ)", callback_data="voice_wintun")
             ],
             [
-                InlineKeyboardButton("⏩ အမြန်နှုန်း: ပုံမှန် (1.0x)", callback_data="speed_normal"),
-                InlineKeyboardButton("🚀 အမြန်နှုန်း: အနည်းငယ်မြန် (1.15x)", callback_data="speed_fast")
+                InlineKeyboardButton("⏩ ပုံမှန် (1.0x)", callback_data="speed_normal"),
+                InlineKeyboardButton("🚀 အမြန် (1.15x)", callback_data="speed_fast")
             ],
             [
                 InlineKeyboardButton("🎬 ✅ အသံသွင်းပြီး ဗီဒီယိုထုတ်မည်", callback_data="process_video")
@@ -110,44 +109,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "🎛️ **အသံ ဆက်တင်များ ရွေးချယ်ပါ:**\n\n"
             f"• လက်ရှိ အသံ: {user_states[user_id]['voice']}\n"
-            f"• လက်ရှိ အမြန်နှုန်း: {user_states[user_id]['speed']}\n\n"
+            f"• လက်ရှိ အမြန်နှုန်း: {user_states[user_id]['rate']}\n\n"
             "ကြိုက်နှစ်သက်ရာကို ရွေးချယ်ပြီးပါက 'အသံသွင်းပြီး ဗီဒီယိုထုတ်မည်' ကို နှိပ်ပါ။",
             reply_markup=reply_markup
         )
-
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-
-    if user_id not in user_states:
-        await query.edit_message_text("⚠️ အချက်အလက်များ သက်တမ်းကုန်သွားပါပြီ။ ဗီဒီယိုအသစ် ပြန်စပါ။")
-                        return
-
-    data = query.data
-
-    if data == "voice_nilar":
-        user_states[user_id]["voice"] = "my-MM-NilarNeural"
-        await query.edit_message_text("✅ အသံကို Nilar (မိန်းကလေးသံ) သို့ ပြောင်းပြီးပါပြီ။ ဆက်လုပ်ရန် အောက်ပါခလုတ်ကို နှိပ်ပါ...", reply_markup=get_settings_keyboard(user_states[user_id]))
-    elif data == "voice_thiha":
-        user_states[user_id]["voice"] = "my-MM-SetupNeural" # (သို့မဟုတ် သင့်တော်သော y nguyar/male voice)
-        user_states[user_id]["voice"] = "my-MM-WinTunNeural" if "WinTunNeural" in edge_tts.list_voices() else "my-MM-NilarNeural"
-        await query.edit_message_text("✅ အသံကို ယောကျ်ားလေးသံ သို့ ပြောင်းပြီးပါပြီ။ ဆက်လုပ်ရန် အောက်ပါခလုတ်ကို နှိပ်ပါ...", reply_markup=get_settings_keyboard(user_states[user_id]))
-    elif data == "speed_normal":
-        user_states[user_id]["rate"] = "+0%"
-        await query.edit_message_text("✅ အမြန်နှုန်း: ပုံမှန် (1.0x)", reply_markup=get_settings_keyboard(user_states[user_id]))
-    elif data == "speed_fast":
-        user_states[user_id]["rate"] = "+15%"
-        await query.edit_message_text("✅ အမြန်နှုန်း: အနည်းငယ်မြန် (1.15x)", reply_markup=get_settings_keyboard(user_states[user_id]))
-    elif data == "process_video":
-        await query.edit_message_text("🎙️ ရွေးချယ်ထားသော ဆက်တင်များဖြင့် အသံသွင်းခြင်းနှင့် ဗီဒီယို ပေါင်းစပ်ခြင်း စတင်နေပါပြီ...")
-        await generate_final_video(query.message, user_id)
 
 def get_settings_keyboard(state):
     keyboard = [
         [
             InlineKeyboardButton("👩‍🦰 Nilar", callback_data="voice_nilar"),
-            InlineKeyboardButton("👨‍💼 Thiha", callback_data="voice_thiha")
+            InlineKeyboardButton("👨‍💼 WinTun", callback_data="voice_wintun")
         ],
         [
             InlineKeyboardButton("⏩ ပုံမှန် (1.0x)", callback_data="speed_normal"),
@@ -158,6 +129,33 @@ def get_settings_keyboard(state):
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+
+    if user_id not in user_states:
+        await query.edit_message_text("⚠️ အချက်အလက်များ သက်တမ်းကုန်သွားပါပြီ။ ဗီဒီယိုအသစ် ပြန်စပါ။")
+        return
+
+    data = query.data
+
+    if data == "voice_nilar":
+        user_states[user_id]["voice"] = "my-MM-NilarNeural"
+        await query.edit_message_text("✅ အသံကို Nilar (မိန်းကလေးသံ) သို့ ပြောင်းပြီးပါပြီ။", reply_markup=get_settings_keyboard(user_states[user_id]))
+    elif data == "voice_wintun":
+        user_states[user_id]["voice"] = "my-MM-WinTunNeural"
+        await query.edit_message_text("✅ အသံကို WinTun (ယောကျ်ားလေးသံ) သို့ ပြောင်းပြီးပါပြီ။", reply_markup=get_settings_keyboard(user_states[user_id]))
+    elif data == "speed_normal":
+        user_states[user_id]["rate"] = "+0%"
+        await query.edit_message_text("✅ အမြန်နှုန်း: ပုံမှန် (1.0x)", reply_markup=get_settings_keyboard(user_states[user_id]))
+    elif data == "speed_fast":
+        user_states[user_id]["rate"] = "+15%"
+        await query.edit_message_text("✅ အမြန်နှုန်း: အနည်းငယ်မြန် (1.15x)", reply_markup=get_settings_keyboard(user_states[user_id]))
+    elif data == "process_video":
+        await query.edit_message_text("🎙️ ရွေးချယ်ထားသော ဆက်တင်များဖြင့် အသံသွင်းခြင်းနှင့် ဗီဒီယို ပေါင်းစပ်ခြင်း စတင်နေပါပြီ...")
+        await generate_final_video(query.message, user_id)
 
 async def generate_final_video(message, user_id):
     state = user_states[user_id]
@@ -171,13 +169,9 @@ async def generate_final_video(message, user_id):
     srt_path = f"subtitle_{user_id}.srt"
 
     try:
-        # 1. Generate Edge-TTS with custom rate & voice
         communicate = edge_tts.Communicate(burmese_text, voice, rate=rate)
         await communicate.save(audio_path)
 
-        # 2. Smart Audio Mixing (Sidechain Compression / Audio Ducking)
-        # စကားပြောခန်းမပါတဲ့ scene တွေမှာ မူရင်းအသံ မပျောက်ဘဲ စကားပြောသံလာမှ မူရင်းအသံကို လျှော့ချပေးမယ့် FFmpeg filter
-        # sidchaincompressor သို့မဟုတ် volumedetect/amix ကို အသုံးပြုခြင်း
         mix_command = (
             f"ffmpeg -y -i {input_video} -i {audio_path} "
             f"-filter_complex \"[0:a]volume=0.1[orig];[1:a]volume=1.2[voice];"
@@ -186,12 +180,10 @@ async def generate_final_video(message, user_id):
         )
         os.system(mix_command)
 
-        # 3. SRT Subtitle generation
         with open(srt_path, "w", encoding="utf-8") as srt_file:
             srt_file.write("1\n00:00:00,000 --> 00:00:15,000\n" + burmese_text[:150] + "\n\n")
             srt_file.write("2\n00:00:15,000 --> 00:00:35,000\n" + burmese_text[150:400] + "\n\n")
 
-        # 4. Send Files
         await message.reply_video(open(output_video, 'rb'), caption="🎬 ပြီးပြည့်စုံသော Smart Audio Movie Recap ဗီဒီယို")
         await message.reply_document(open(srt_path, 'rb'), caption="📄 Recap SRT Subtitle ဖိုင်")
 
