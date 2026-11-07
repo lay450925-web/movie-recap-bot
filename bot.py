@@ -15,7 +15,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Render Web Server (24/7)
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
