@@ -2,7 +2,6 @@ import os
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
-import whisper
 import edge_tts
 import asyncio
 import subprocess
@@ -19,9 +18,9 @@ user_sessions = {}
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "🤖 **Advanced Movie Recap Bot** မှ ကြိုဆိုပါတယ်ဗျ!\n\n"
-        "၁။ မူရင်းဗီဒီယိုကို ပို့ပါ။ (Whisper ဖြင့် အင်္ဂလိပ် Transcript ထုတ်ပေးပါမည်)\n"
-        "၂။ Gemini တွင် မြန်မာလို ဘာသာပြန်ပြီး Bot ဆီသို့ ပြန်ပို့ပါ။\n"
-        "၃။ အသံအမျိုးအစားနှင့် အမြန်နှုန်းကို ရွေးချယ်နိုင်သော ခလုတ်များ ပေါ်လာပါမည်။"
+        "၁။ ဗီဒီယိုဖိုင်ကို ပို့ပါ။\n"
+        "၂။ ဗီဒီယိုထဲမှ အသံကို ထုတ်ယူပေးပါမည်။ (အသံဖိုင် သို့မဟုတ် ဇာတ်လမ်းအကျဉ်းကို Gemini တွင် ဘာသာပြန်ပါ)\n"
+        "၃။ ဘာသာပြန်စာသားကို Bot ဆီသို့ ပြန်ပို့ပြီး အသံအမျိုးအစား ရွေးချယ်ပါ။"
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
@@ -32,7 +31,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not video:
         return
 
-    msg = await update.message.reply_text("📥 ဗီဒီယိုကို လက်ခံရရှိပါပြီ။ Whisper (tiny) ဖြင့် အင်္ဂလိပ် Transcript ထုတ်နေပါပြီ...")
+    msg = await update.message.reply_text("📥 ဗီဒီယိုကို လက်ခံရရှိပါပြီ။ အသံဖိုင် (Audio) ထုတ်ယူနေပါပြီ...")
     
     # Download video file
     file = await context.bot.get_file(video.file_id)
@@ -44,34 +43,14 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Extract audio using ffmpeg
     subprocess.run(["ffmpeg", "-y", "-i", input_video_path, "-vn", "-acodec", "libmp3lame", audio_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    # Transcribe with Whisper (Load model on-demand to save Render Free Tier RAM)
-    try:
-        logger.info("Loading Whisper tiny model on-demand...")
-        model = whisper.load_model("tiny")
-        result = model.transcribe(audio_path)
-        transcript_text = result["text"]
-        
-        # Free up memory
-        del model
-        
-        user_sessions[user_id] = {
-            "video_path": input_video_path,
-            "transcript": transcript_text
-        }
-        
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=msg.message_id,
-            text=f"✅ **အင်္ဂလိပ် Transcript ထွက်ရှိပါပြီ!**\n\n{transcript_text[:1000]}...\n\n👉 *အထက်ပါ စာသားကို Gemini တွင် မြန်မာလို ဘာသာပြန်ပြီး ဤရုပ်သံချတ်ထဲသို့ ပြန်လည်ပေးပို့ပါခင်ဗျ။*",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        logger.error(f"Transcription error: {e}")
-        await context.bot.edit_message_text(
-            chat_id=update.effective_chat.id,
-            message_id=msg.message_id,
-            text="❌ Transcript ထုတ်ယူရာတွင် အမှားအယွင်း ရှိသွားပါသည်။ (ဖိုင်အရွယ်အစား ကြီးလွန်းခြင်း သို့မဟုတ် ဆာဗာမှတ်ဉာဏ် အကန့်အသတ်ကြောင့် ဖြစ်နိုင်ပါသည်)"
-        )
+    user_sessions[user_id] = {
+        "video_path": input_video_path,
+        "audio_path": audio_path
+    }
+    
+    # Send extracted audio to user so they can transcribe/translate easily using Gemini
+    with open(audio_path, "rb") as aud:
+        await context.bot.send_audio(chat_id=update.effective_chat.id, audio=aud, caption="🎧 ထုတ်ယူထားသော အသံဖိုင် (Audio) ဖြစ်ပါသည်။ ဤဖိုင် သို့မဟုတ် ဇာတ်လမ်းအကျဉ်းကို Gemini တွင် မြန်မာလို ဘာသာပြန်ပြီး ဤရုပ်သံချတ်ထဲသို့ ပြန်လည်ပေးပို့ပါခင်ဗျ။")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -122,7 +101,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         speed_val = float(data.split("_")[1])
         user_sessions[user_id]["speed"] = speed_val
 
-        await query.edit_message_text("🔄 အသံသွင်းခြင်းနှင့် ဗီဒီယိုထုတ်လုပ်ခြင်း (Smart Audio Mixing) လုပ်ဆောင်နေပါပြီ... ခဏစောင့်ပေးပါ။")
+        await query.edit_message_text("🔄 ဗီဒီယိုထုတ်လုပ်ခြင်း (Smart Audio Mixing) လုပ်ဆောင်နေပါပြီ... ခဏစောင့်ပေးပါ။")
 
         session = user_sessions[user_id]
         video_path = session["video_path"]
