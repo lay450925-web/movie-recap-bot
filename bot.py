@@ -53,7 +53,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_audio(
             chat_id=update.effective_chat.id, 
             audio=aud, 
-            caption="🎧 ထုတ်ယူထားသော အသံဖိုင် (Audio) ဖြစ်ပါသည်။ ဤဖိုင်ကို Gemini တွင် မြန်မာလို ဘာသာပြန်ဆိုပြီး ဤရုပ်သံချတ်ထဲသို့ ပြန်လည်ပေးပို့ပါခင်ဗျ[span_2](start_span)[span_2](end_span)[span_3](start_span)[span_3](end_span)။"
+            caption="🎧 ထုတ်ယူထားသော အသံဖိုင် (Audio) ဖြစ်ပါသည်။ ဤဖိုင်ကို Gemini တွင် မြန်မာလို ဘာသာပြန်ဆိုပြီး ဤရုပ်သံချတ်ထဲသို့ ပြန်လည်ပေးပို့ပါခင်ဗျ[span_2](start_span)[span_2](end_span)[span_3](start_span)[span_3](end_span)."
         )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
