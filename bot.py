@@ -1,6 +1,8 @@
 import os
 import logging
+import asyncio
 import yt_dlp
+import edge_tts
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -25,7 +27,12 @@ def run_web_server():
     server.serve_forever()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("မင်္ဂလာပါ bro! ဗီဒီယိုလင့်ခ์ ပို့ပေးပါ၊ ဒေါင်းလုဒ်ဆွဲပေးပါမယ်။")
+    await update.message.reply_text("မင်္ဂလာပါ bro! ဗီဒီယိုလင့်ခ์ ပို့ပေးပါ၊ AI အသံဖိုင်ပါ တစ်ခါတည်း ဖန်တီးပေးပါမယ်။")
+
+async def generate_tts(text: str, output_file: str):
+    voice = "my-MM-NilarNeural"
+    communicate = edge_tts.Communicate(text, voice)
+    await communicate.save(output_file)
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
@@ -42,10 +49,20 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
         
-        await msg.edit_text("📤 Telegram ထဲသို့ ဗီဒီယို ပို့ဆောင်နေပါပြီ...")
+        await msg.edit_text("🎙️ ဗီဒီယို ဒေါင်းလုဒ်ပြီးပါပြီ။ AI အသံဖိုင် ဆက်လက် ဖန်တီးနေပါသည်...")
+
+        # AI Voiceover Text (နောက်ပိုင်း လိုသလို ပြင်လို့ရပါတယ်)
+        recap_script = "ဒီဗီဒီယိုလေးကတော့ One-Click Movie Recap Bot ရဲ့ အလိုအလျောက် ထုတ်လုပ်ထားတဲ့ ဇာတ်လမ်းအကျဉ်းပဲ ဖြစ်ပါတယ်။"
+        audio_path = "output_voice.mp3"
+        await generate_tts(recap_script, audio_path)
+
+        await msg.edit_text("📤 Telegram ထဲသို့ ဗီဒီယိုနှင့် AI အသံဖိုင် ပို့ဆောင်နေပါပြီ...")
         
         with open('downloaded_video.mp4', 'rb') as video_file:
             await update.message.reply_video(video_file, caption="🎬 ဒေါင်းလုဒ်ဆွဲထားသော ဗီဒီယို")
+        
+        with open(audio_path, 'rb') as audio_file:
+            await update.message.reply_audio(audio_file, caption="🎙️ AI အသံဖိုင် (Voiceover)")
         
         await msg.delete()
     except Exception as e:
