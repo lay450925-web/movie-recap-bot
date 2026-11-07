@@ -27,7 +27,7 @@ def run_web_server():
     server.serve_forever()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("မင်္ဂလာပါ bro! ဗီဒီယိုလင့်ခ์ ပို့ပေးပါ၊ AI အသံဖိုင်ပါ တစ်ခါတည်း ဖန်တီးပေးပါမယ်။")
+    await update.message.reply_text("မင်္ဂလာပါ bro! TikTok လင့်ခ์ ပို့ပေးပါ၊ Movie Recap ဗီဒီယို အစအဆုံး ဖန်တီးပေးပါမယ်။")
 
 async def generate_tts(text: str, output_file: str):
     voice = "my-MM-NilarNeural"
@@ -39,6 +39,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("📥 ဗီဒီယိုလင့်ခ์ကို လက်ခံရရှိပါပြီ။ `yt-dlp` ဖြင့် Download ဆွဲနေပါသည်...")
     
     try:
+        # 1. Video Download
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'outtmpl': 'downloaded_video.mp4',
@@ -49,20 +50,26 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
         
-        await msg.edit_text("🎙️ ဗီဒီယို ဒေါင်းလုဒ်ပြီးပါပြီ။ AI အသံဖိုင် ဆက်လက် ဖန်တီးနေပါသည်...")
+        await msg.edit_text("🎙️ ဗီဒီယို ဒေါင်းလုဒ်ပြီးပါပြီ။ AI ဇာတ်လမ်းပြော အသံဖိုင် ဖန်တီးနေပါသည်...")
 
-        # AI Voiceover Text (နောက်ပိုင်း လိုသလို ပြင်လို့ရပါတယ်)
+        # 2. Generate AI Voiceover
         recap_script = "ဒီဗီဒီယိုလေးကတော့ One-Click Movie Recap Bot ရဲ့ အလိုအလျောက် ထုတ်လုပ်ထားတဲ့ ဇာတ်လမ်းအကျဉ်းပဲ ဖြစ်ပါတယ်။"
         audio_path = "output_voice.mp3"
         await generate_tts(recap_script, audio_path)
 
-        await msg.edit_text("📤 Telegram ထဲသို့ ဗီဒီယိုနှင့် AI အသံဖိုင် ပို့ဆောင်နေပါပြီ...")
+        await msg.edit_text("🎬 ဗီဒီယိုနှင့် AI အသံဖိုင်ကို FFmpeg ဖြင့် ပေါင်းစပ်နေပါသည်...")
+
+        # 3. Merge Video and Audio using FFmpeg
+        output_video = "final_recap.mp4"
+        # ဗီဒီယို မူရင်းအသံကို ဖယ်ပြီး AI အသံဖိုင်ကို အစားထိုးပေါင်းစပ်ခြင်း
+        command = f"ffmpeg -y -i downloaded_video.mp4 -i {audio_path} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest {output_video}"
+        os.system(command)
+
+        await msg.edit_text("📤 Telegram ထဲသို့ Final Recap ဗီဒီယို ပို့ဆောင်နေပါပြီ...")
         
-        with open('downloaded_video.mp4', 'rb') as video_file:
-            await update.message.reply_video(video_file, caption="🎬 ဒေါင်းလုဒ်ဆွဲထားသော ဗီဒီယို")
-        
-        with open(audio_path, 'rb') as audio_file:
-            await update.message.reply_audio(audio_file, caption="🎙️ AI အသံဖိုင် (Voiceover)")
+        # 4. Send Final Video to Telegram
+        with open(output_video, 'rb') as video_file:
+            await update.message.reply_video(video_file, caption="🎬 ပြီးပြည့်စုံသော One-Click Movie Recap ဗီဒီယို")
         
         await msg.delete()
     except Exception as e:
