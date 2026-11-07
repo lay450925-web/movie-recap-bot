@@ -11,11 +11,6 @@ import subprocess
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load Whisper model (Using 'tiny' for Render Free Tier to save RAM)
-logger.info("Loading Whisper model...")
-model = whisper.load_model("tiny")
-logger.info("Whisper model loaded successfully.")
-
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "745338419:AAHVk8eitszyJjr_Z6Ku1liX6V3D1CU_n8k")
 
 # Dictionary to temporarily store user session states
@@ -37,7 +32,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not video:
         return
 
-    msg = await update.message.reply_text("📥 ဗီဒီယိုကို လက်ခံရရှိပါပြီ။ Whisper ဖြင့် အင်္ဂလိပ် Transcript ထုတ်နေပါပြီ...")
+    msg = await update.message.reply_text("📥 ဗီဒီယိုကို လက်ခံရရှိပါပြီ။ Whisper (tiny) ဖြင့် အင်္ဂလိပ် Transcript ထုတ်နေပါပြီ...")
     
     # Download video file
     file = await context.bot.get_file(video.file_id)
@@ -49,10 +44,15 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Extract audio using ffmpeg
     subprocess.run(["ffmpeg", "-y", "-i", input_video_path, "-vn", "-acodec", "libmp3lame", audio_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    # Transcribe with Whisper
+    # Transcribe with Whisper (Load model on-demand to save Render Free Tier RAM)
     try:
+        logger.info("Loading Whisper tiny model on-demand...")
+        model = whisper.load_model("tiny")
         result = model.transcribe(audio_path)
         transcript_text = result["text"]
+        
+        # Free up memory
+        del model
         
         user_sessions[user_id] = {
             "video_path": input_video_path,
@@ -87,8 +87,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Show voice and speed selection buttons
     keyboard = [
         [
-            InlineKeyboardButton(" nő Nilar (Female)", callback_data="voice_nilar"),
-            InlineKeyboardButton(" ♂ WinTun (Male)", callback_data="voice_wintun")
+            InlineKeyboardButton("♀️ Nilar (Female)", callback_data="voice_nilar"),
+            InlineKeyboardButton("♂️ WinTun (Male)", callback_data="voice_wintun")
         ],
         [
             InlineKeyboardButton("⚡ 1.25x", callback_data="speed_1.25"),
@@ -138,7 +138,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await communicate.save(tts_audio)
 
             # Process with ffmpeg (Audio Ducking & Mixing)
-            # Mix original video audio (lowered volume) with TTS voiceover
             cmd = [
                 "ffmpeg", "-y", "-i", video_path, "-i", tts_audio,
                 "-filter_complex", "[0:a]volume=0.2[a0];[1:a]atempo=1.0[a1];[a0][a1]amix=inputs=2:duration=first[a]",
