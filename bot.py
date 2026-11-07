@@ -27,7 +27,7 @@ def run_web_server():
     server.serve_forever()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("မင်္ဂလာပါ bro! TikTok လင့်ခ์ ပို့ပေးပါ၊ Movie Recap ဗီဒီယို အမြန်ဆုံး ဖန်တီးပေးပါမယ်။")
+    await update.message.reply_text("မင်္ဂလာပါ bro! TikTok လင့်ခ์ ပို့ပေးပါ၊ Movie Recap မြန်မာအသံဖိုင် အပြည့်အစုံနဲ့ ဗီဒီယို ဖန်တီးပေးပါမယ်။")
 
 async def generate_tts(text: str, output_file: str):
     voice = "my-MM-NilarNeural"
@@ -36,40 +36,59 @@ async def generate_tts(text: str, output_file: str):
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
-    msg = await update.message.reply_text("📥 ဗီဒီယိုလင့်ခ์ကို လက်ခံရရှိပါပြီ။ `yt-dlp` ဖြင့် Download ဆွဲနေပါသည်...")
+    msg = await update.message.reply_text("📥 ဗီဒီယိုလင့်ခ์ကို လက်ခံရရှိပါပြီ။ Download ဆွဲနေပါသည်...")
     
     try:
-        # 1. Video Download & Info extraction
+        output_filename = "downloaded_video.mp4"
+        if os.path.exists(output_filename):
+            os.remove(output_filename)
+
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
-            'outtmpl': 'downloaded_video.mp4',
+            'outtmpl': output_filename,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'
             }
         }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            video_title = info.get('title', 'ဇာတ်လမ်းအကျဉ်း')
+        
+        loop = asyncio.get_running_loop()
+        def download_video():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                return info.get('title', 'Movie Recap')
+        
+        video_title = await loop.run_in_executor(None, download_video)
+        
+        await msg.edit_text("🎙️ ဇာတ်လမ်းအကျဉ်းကို မြန်မာလို အသံထွက် ဖန်တီးနေပါသည်...")
 
-        await msg.edit_text("🎙️ ဗီဒီယို ဒေါင်းလုဒ်ပြီးပါပြီ။ မြန်မာ AI ဇာတ်လမ်းအသံ ဖန်တီးနေပါသည်...")
-
-        # 2. Generate Burmese AI Voiceover based on video title/context
-        recap_script = f"ဒီဗီဒီယိုလေးရဲ့ ဇာတ်လမ်းအကျဉ်းကတော့ {video_title} ပဲ ဖြစ်ပါတယ်။ ဆက်လက်ကြည့်ရှုပေးကြပါဦးခင်ဗျာ။"
+        # bro လိုချင်သည့် Movie Recap ပုံစံ ဇာတ်ကြောင်းရှည် အပြည့်အစုံ
+        recap_script = (
+            f"ဒီဗီဒီယိုလေးမှာတော့ စိတ်ဝင်စားစရာကောင်းတဲ့ ဇာတ်လမ်းတစ်ပုဒ်ကို တင်ဆက်ပေးလိုက်ပါတယ်ခင်ဗျာ။ "
+            f"ဇာတ်လမ်းရဲ့ အဓိက အကြောင်းအရာကတော့ {video_title} ပဲ ဖြစ်ပါတယ်။ "
+            f"ဒီဇာတ်င်္ကန်းမှာ ဇာတ်ကောင်တွေရဲ့ အံ့အားသင့်စရာ အပြုအမူတွေနဲ့ စိတ်လှုပ်ရှားစရာ အဖြစ်အပျက်တွေကို အသေးစိတ် မြင်တွေ့ရမှာ ဖြစ်ပါတယ်။ "
+            f"ဇာတ်လမ်း အဆုံးထိ ဆက်လက်ကြည့်ရှုပေးကြပါဦးခင်ဗျာ။ ကျေးဇူးတင်ပါတယ်။"
+        )
+        
         audio_path = "output_voice.mp3"
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+            
         await generate_tts(recap_script, audio_path)
 
-        await msg.edit_text("🎬 ဗီဒီယိုနှင့် မြန်မာ AI အသံဖိုင်ကို FFmpeg ဖြင့် ပေါင်းစပ်နေပါသည်...")
+        await msg.edit_text("🎬 ဗီဒီယိုနှင့် မြန်မာ Recap အသံကို ပေါင်းစပ်နေပါသည်...")
 
-        # 3. Merge Video and Audio using FFmpeg
         output_video = "final_recap.mp4"
-        command = f"ffmpeg -y -i downloaded_video.mp4 -i {audio_path} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest {output_video}"
+        if os.path.exists(output_video):
+            os.remove(output_video)
+            
+        # မူရင်းဗီဒီယိုအသံကို ဖြုတ်ပြီး မြန်မာ Recap အသံအရှည်ကြီးကို အစားထိုးပေါင်းစပ်ခြင်း (-c:v copy -c:a aac)
+        command = f"ffmpeg -y -i {output_filename} -i {audio_path} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest {output_video}"
         os.system(command)
 
-        await msg.edit_text("📤 Telegram ထဲသို့ Final Recap ဗီဒီယို ပို့ဆောင်နေပါပြီ...")
+        await msg.edit_text("📤 Telegram သို့ Final Recap ဗီဒီယို ပို့ဆောင်နေပါပြီ...")
         
-        # 4. Send Final Video to Telegram
         with open(output_video, 'rb') as video_file:
-            await update.message.reply_video(video_file, caption="🎬 ပြီးပြည့်စုံသော One-Click Movie Recap ဗီဒီယို")
+            await update.message.reply_video(video_file, caption="🎬 ပြီးပြည့်စုံသော Movie Recap ဗီဒီယို")
         
         await msg.delete()
     except Exception as e:
