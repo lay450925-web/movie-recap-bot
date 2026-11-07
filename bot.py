@@ -19,7 +19,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "🤖 **Advanced Movie Recap Bot** မှ ကြိုဆိုပါတယ်ဗျ!\n\n"
         "၁။ ဗီဒီယိုဖိုင်ကို ပို့ပါ။\n"
-        "၂။ ဗီဒီယိုထဲမှ အသံကို ထုတ်ယူပေးပါမည်။ (အသံဖိုင် သို့မဟုတ် ဇာတ်လမ်းအကျဉ်းကို Gemini တွင် ဘာသာပြန်ပါ)\n"
+        "၂။ ဗီဒီယိုထဲမှ အသံဖိုင် (Audio) ထွက်လာပါမည်။ ၎င်းကို Gemini တွင် မြန်မာလို ဘာသာပြန်ပါ[span_0](start_span)[span_0](end_span)[span_1](start_span)[span_1](end_span).\n"
         "၃။ ဘာသာပြန်စာသားကို Bot ဆီသို့ ပြန်ပို့ပြီး အသံအမျိုးအစား ရွေးချယ်ပါ။"
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
@@ -48,16 +48,20 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "audio_path": audio_path
     }
     
-    # Send extracted audio to user so they can transcribe/translate easily using Gemini
+    # Send extracted audio to user
     with open(audio_path, "rb") as aud:
-        await context.bot.send_audio(chat_id=update.effective_chat.id, audio=aud, caption="🎧 ထုတ်ယူထားသော အသံဖိုင် (Audio) ဖြစ်ပါသည်။ ဤဖိုင် သို့မဟုတ် ဇာတ်လမ်းအကျဉ်းကို Gemini တွင် မြန်မာလို ဘာသာပြန်ပြီး ဤရုပ်သံချတ်ထဲသို့ ပြန်လည်ပေးပို့ပါခင်ဗျ။")
+        await context.bot.send_audio(
+            chat_id=update.effective_chat.id, 
+            audio=aud, 
+            caption="🎧 ထုတ်ယူထားသော အသံဖိုင် (Audio) ဖြစ်ပါသည်။ ဤဖိုင်ကို Gemini တွင် မြန်မာလို ဘာသာပြန်ဆိုပြီး ဤရုပ်သံချတ်ထဲသို့ ပြန်လည်ပေးပို့ပါခင်ဗျ[span_2](start_span)[span_2](end_span)[span_3](start_span)[span_3](end_span)။"
+        )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
 
     if user_id not in user_sessions:
-        await update.message.reply_text("⚠️ ကျေးဇူးပြု၍ ပထမဦးစွာ ဗီဒီယိုဖိုင်တစ်ခုကို အရင်ပို့ပေးပါခင်ဗျ။")
+        await update.message.reply_text("⚠️ ကျေးဇူးပြု၍ ပထမဦးစွာ ဗီဒီယိုဖိုင်တစ်ခုကို အရင်ပို့ပေးပါခင်ဗျ[span_4](start_span)[span_4](end_span).")
         return
 
     # Store translated text from user
@@ -78,7 +82,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        "✅ မြန်မာဘာသာပြန်ချက်ကို လက်ခံရရှိပါပြီ။\n\n🎙️ အသံအမျိုးအစားနှင့် အမြန်နှုန်းကို ရွေးချယ်ပါ -",
+        "✅ မြန်မာဘာသာပြန်ချက်ကို လက်ခံရရှိပါပြီ[span_5](start_span)[span_5](end_span)。\n\n🎙️ အသံအမျိုးအစားနှင့် အမြန်နှုန်းကို ရွေးချယ်ပါ -",
         reply_markup=reply_markup
     )
 
@@ -88,7 +92,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if user_id not in user_sessions:
-        await query.edit_message_text("⚠️ Session သက်တမ်းကုန်သွားပါပြီ။ ဗီဒီယိုကို အစကနေ ပြန်ပို့ပေးပါ။")
+        await query.edit_message_text("⚠️ Session သက်တမ်းကုန်သွားပါပြီ။ ဗီဒီယိုကို အစကနေ ပြန်ပို့ပါ။")
         return
 
     data = query.data
