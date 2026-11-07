@@ -1,208 +1,168 @@
 import os
 import logging
-import asyncio
-import edge_tts
-import whisper
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+import whisper
+import edge_tts
+import asyncio
+import subprocess
 
-BOT_TOKEN = "9174538419:AAGV5mHqizy_Jr_ZGKu1LisXEV3DlCU_z8k"
+# Logging setup
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Load Whisper model (Using 'tiny' for Render Free Tier to save RAM)
+logger.info("Loading Whisper model...")
+model = whisper.load_model("tiny")
+logger.info("Whisper model loaded successfully.")
 
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Advanced Movie Recap Bot is running 24/7!")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "745338419:AAHVk8eitszyJjr_Z6Ku1liX6V3D1CU_n8k")
 
-def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
-    server.serve_forever()
-
-user_states = {}
+# Dictionary to temporarily store user session states
+user_sessions = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "မင်္ဂလာပါ bro! 🎬 Advanced Movie Recap Bot မှ ကြိုဆိုပါတယ်။\n\n"
-        "လုပ်ဆောင်ပုံ:\n"
-        "၁။ မူရင်းဗီဒီယို ပို့ပါ။ (Whisper ဖြင့် Transcript ထုတ်ပေးပါမည်)\n"
+    welcome_text = (
+        "🤖 **Advanced Movie Recap Bot** မှ ကြိုဆိုပါတယ်ဗျ!\n\n"
+        "၁။ မူရင်းဗီဒီယိုကို ပို့ပါ။ (Whisper ဖြင့် အင်္ဂလိပ် Transcript ထုတ်ပေးပါမည်)\n"
         "၂။ Gemini တွင် မြန်မာလို ဘာသာပြန်ပြီး Bot ဆီသို့ ပြန်ပို့ပါ။\n"
         "၃။ အသံအမျိုးအစားနှင့် အမြန်နှုန်းကို ရွေးချယ်နိုင်သော ခလုတ်များ ပေါ်လာပါမည်။"
     )
+    await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    video = update.message.video or update.message.document
     
-    if update.message.video:
-        msg = await update.message.reply_text("📥 ဗီဒီယိုကို လက်ခံရရှိပါပြီ။ Whisper ဖြင့် အင်္ဂလိပ် Transcript ထုတ်နေပါပြီ...")
+    if not video:
+        return
+
+    msg = await update.message.reply_text("📥 ဗီဒီယိုကို လက်ခံရရှိပါပြီ။ Whisper ဖြင့် အင်္ဂလိပ် Transcript ထုတ်နေပါပြီ...")
+    
+    # Download video file
+    file = await context.bot.get_file(video.file_id)
+    input_video_path = f"input_{user_id}.mp4"
+    audio_path = f"audio_{user_id}.mp3"
+    
+    await file.download_to_drive(input_video_path)
+    
+    # Extract audio using ffmpeg
+    subprocess.run(["ffmpeg", "-y", "-i", input_video_path, "-vn", "-acodec", "libmp3lame", audio_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    # Transcribe with Whisper
+    try:
+        result = model.transcribe(audio_path)
+        transcript_text = result["text"]
         
-        try:
-            video_file = await update.message.video.get_file()
-            input_video = f"video_{user_id}.mp4"
-            if os.path.exists(input_video):
-                os.remove(input_video)
-            await video_file.download_to_drive(input_video)
-            
-            extracted_audio = f"audio_{user_id}.mp3"
-            if os.path.exists(extracted_audio):
-                os.remove(extracted_audio)
-            os.system(f"ffmpeg -y -i {input_video} -q:a 0 -map a {extracted_audio}")
-
-            model = whisper.load_model("base")
-            result = model.transcribe(extracted_audio)
-            
-            english_transcript = ""
-            for segment in result["segments"]:
-                english_transcript += f"[{segment['start']:.2f}s -> {segment['end']:.2f}s] {segment['text']}\n"
-
-            user_states[user_id] = {
-                "input_video": input_video,
-                "voice": "my-MM-NilarNeural",
-                "rate": "+0%"
-            }
-
-            await msg.edit_text(
-                "✅ **Transcript ထွက်လာပါပြီ။**\n\n"
-                "အောက်ပါ စာသားများကို ကူးယူပြီး **Gemini** တွင် မြန်မာလို ဘာသာပြန်ကာ၊ ပြီးလျှင် အဲ့ဒီမြန်မာစာသားကို ဤ Bot ဆီသို့ ပြန်ပို့ပေးပါခင်ဗျာ။\n\n"
-                f"{english_transcript[:4000]}"
-            )
-            
-            if len(english_transcript) > 4000:
-                await update.message.reply_text(english_transcript[4000:])
-
-        except Exception as e:
-            await msg.edit_text(f"❌ Error ဖြစ်သွားပါသည်: {str(e)}")
+        user_sessions[user_id] = {
+            "video_path": input_video_path,
+            "transcript": transcript_text
+        }
+        
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=msg.message_id,
+            text=f"✅ **အင်္ဂလိပ် Transcript ထွက်ရှိပါပြီ!**\n\n{transcript_text[:1000]}...\n\n👉 *အထက်ပါ စာသားကို Gemini တွင် မြန်မာလို ဘာသာပြန်ပြီး ဤရုပ်သံချတ်ထဲသို့ ပြန်လည်ပေးပို့ပါခင်ဗျ။*",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"Transcription error: {e}")
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=msg.message_id,
+            text="❌ Transcript ထုတ်ယူရာတွင် အမှားအယွင်း ရှိသွားပါသည်။ (ဖိုင်အရွယ်အစား ကြီးလွန်းခြင်း သို့မဟုတ် ဆာဗာမှတ်ဉာဏ် အကန့်အသတ်ကြောင့် ဖြစ်နိုင်ပါသည်)"
+        )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
-    if update.message.text:
-        if user_id not in user_states or "input_video" not in user_states[user_id]:
-            await update.message.reply_text("⚠️ ကျေးဇူးပြု၍ ပထမဦးစွာ မူရင်း ဗီဒီယိုဖိုင်ကို ပို့ပေးပါခင်ဗျာ။")
-            return
+    text = update.message.text
 
-        user_states[user_id]["burmese_text"] = update.message.text
+    if user_id not in user_sessions:
+        await update.message.reply_text("⚠️ ကျေးဇူးပြု၍ ပထမဦးစွာ ဗီဒီယိုဖိုင်တစ်ခုကို အရင်ပို့ပေးပါခင်ဗျ။")
+        return
 
-        keyboard = [
-            [
-                InlineKeyboardButton("👩‍🦰 Nilar (မိန်းကလေးသံ)", callback_data="voice_nilar"),
-                InlineKeyboardButton("👨‍💼 WinTun (ယောကျ်ားလေးသံ)", callback_data="voice_wintun")
-            ],
-            [
-                InlineKeyboardButton("⏩ ပုံမှန် (1.0x)", callback_data="speed_normal"),
-                InlineKeyboardButton("🚀 အမြန် (1.15x)", callback_data="speed_fast")
-            ],
-            [
-                InlineKeyboardButton("🎬 ✅ အသံသွင်းပြီး ဗီဒီယိုထုတ်မည်", callback_data="process_video")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+    # Store translated text from user
+    user_sessions[user_id]["translated_text"] = text
 
-        await update.message.reply_text(
-            "🎛️ **အသံ ဆက်တင်များ ရွေးချယ်ပါ:**\n\n"
-            f"• လက်ရှိ အသံ: {user_states[user_id]['voice']}\n"
-            f"• လက်ရှိ အမြန်နှုန်း: {user_states[user_id]['rate']}\n\n"
-            "ကြိုက်နှစ်သက်ရာကို ရွေးချယ်ပြီးပါက 'အသံသွင်းပြီး ဗီဒီယိုထုတ်မည်' ကို နှိပ်ပါ။",
-            reply_markup=reply_markup
-        )
-
-def get_settings_keyboard(state):
+    # Show voice and speed selection buttons
     keyboard = [
         [
-            InlineKeyboardButton("👩‍🦰 Nilar", callback_data="voice_nilar"),
-            InlineKeyboardButton("👨‍💼 WinTun", callback_data="voice_wintun")
+            InlineKeyboardButton(" nő Nilar (Female)", callback_data="voice_nilar"),
+            InlineKeyboardButton(" ♂ WinTun (Male)", callback_data="voice_wintun")
         ],
         [
-            InlineKeyboardButton("⏩ ပုံမှန် (1.0x)", callback_data="speed_normal"),
-            InlineKeyboardButton("🚀 အမြန် (1.15x)", callback_data="speed_fast")
-        ],
-        [
-            InlineKeyboardButton("🎬 ✅ အသံသွင်းပြီး ဗီဒီယိုထုတ်မည်", callback_data="process_video")
+            InlineKeyboardButton("⚡ 1.25x", callback_data="speed_1.25"),
+            InlineKeyboardButton("⚡ 1.5x", callback_data="speed_1.5"),
+            InlineKeyboardButton("⚡ 2.0x", callback_data="speed_2.0")
         ]
     ]
-    return InlineKeyboardMarkup(keyboard)
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "✅ မြန်မာဘာသာပြန်ချက်ကို လက်ခံရရှိပါပြီ။\n\n🎙️ အသံအမျိုးအစားနှင့် အမြန်နှုန်းကို ရွေးချယ်ပါ -",
+        reply_markup=reply_markup
+    )
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
+    user_id = update.effective_user.id
 
-    if user_id not in user_states:
-        await query.edit_message_text("⚠️ အချက်အလက်များ သက်တမ်းကုန်သွားပါပြီ။ ဗီဒီယိုအသစ် ပြန်စပါ။")
+    if user_id not in user_sessions:
+        await query.edit_message_text("⚠️ Session သက်တမ်းကုန်သွားပါပြီ။ ဗီဒီယိုကို အစကနေ ပြန်ပို့ပေးပါ။")
         return
 
     data = query.data
+    if data.startswith("voice_"):
+        user_sessions[user_id]["voice"] = "my-MM-NilarNeural" if data == "voice_nilar" else "my-MM-WinTunNeural"
+        await query.edit_message_text(f"✅ အသံအမျိုးအစား ရွေးချယ်ပြီးပါပြီ: {'Nilar (အမျိုးသမီး)' if data == 'voice_nilar' else 'WinTun (အမျိုးသား)'}\n\nအမြန်နှုန်း (Speed) ကို ဆက်လက်ရွေးချယ်ပါ။")
+        return
+    
+    elif data.startswith("speed_"):
+        speed_val = float(data.split("_")[1])
+        user_sessions[user_id]["speed"] = speed_val
 
-    if data == "voice_nilar":
-        user_states[user_id]["voice"] = "my-MM-NilarNeural"
-        await query.edit_message_text("✅ အသံကို Nilar (မိန်းကလေးသံ) သို့ ပြောင်းပြီးပါပြီ။", reply_markup=get_settings_keyboard(user_states[user_id]))
-    elif data == "voice_wintun":
-        user_states[user_id]["voice"] = "my-MM-WinTunNeural"
-        await query.edit_message_text("✅ အသံကို WinTun (ယောကျ်ားလေးသံ) သို့ ပြောင်းပြီးပါပြီ။", reply_markup=get_settings_keyboard(user_states[user_id]))
-    elif data == "speed_normal":
-        user_states[user_id]["rate"] = "+0%"
-        await query.edit_message_text("✅ အမြန်နှုန်း: ပုံမှန် (1.0x)", reply_markup=get_settings_keyboard(user_states[user_id]))
-    elif data == "speed_fast":
-        user_states[user_id]["rate"] = "+15%"
-        await query.edit_message_text("✅ အမြန်နှုန်း: အနည်းငယ်မြန် (1.15x)", reply_markup=get_settings_keyboard(user_states[user_id]))
-    elif data == "process_video":
-        await query.edit_message_text("🎙️ ရွေးချယ်ထားသော ဆက်တင်များဖြင့် အသံသွင်းခြင်းနှင့် ဗီဒီယို ပေါင်းစပ်ခြင်း စတင်နေပါပြီ...")
-        await generate_final_video(query.message, user_id)
+        await query.edit_message_text("🔄 အသံသွင်းခြင်းနှင့် ဗီဒီယိုထုတ်လုပ်ခြင်း (Smart Audio Mixing) လုပ်ဆောင်နေပါပြီ... ခဏစောင့်ပေးပါ။")
 
-async def generate_final_video(message, user_id):
-    state = user_states[user_id]
-    input_video = state["input_video"]
-    burmese_text = state["burmese_text"]
-    voice = state.get("voice", "my-MM-NilarNeural")
-    rate = state.get("rate", "+0%")
+        session = user_sessions[user_id]
+        video_path = session["video_path"]
+        translated_text = session["translated_text"]
+        voice = session.get("voice", "my-MM-NilarNeural")
+        
+        tts_audio = f"tts_{user_id}.mp3"
+        final_video = f"final_{user_id}.mp4"
 
-    audio_path = f"output_voice_{user_id}.mp3"
-    output_video = f"final_recap_{user_id}.mp4"
-    srt_path = f"subtitle_{user_id}.srt"
+        try:
+            # Generate Edge-TTS audio
+            communicate = edge_tts.Communicate(translated_text, voice)
+            await communicate.save(tts_audio)
 
-    try:
-        communicate = edge_tts.Communicate(burmese_text, voice, rate=rate)
-        await communicate.save(audio_path)
+            # Process with ffmpeg (Audio Ducking & Mixing)
+            # Mix original video audio (lowered volume) with TTS voiceover
+            cmd = [
+                "ffmpeg", "-y", "-i", video_path, "-i", tts_audio,
+                "-filter_complex", "[0:a]volume=0.2[a0];[1:a]atempo=1.0[a1];[a0][a1]amix=inputs=2:duration=first[a]",
+                "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", final_video
+            ]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        mix_command = (
-            f"ffmpeg -y -i {input_video} -i {audio_path} "
-            f"-filter_complex \"[0:a]volume=0.1[orig];[1:a]volume=1.2[voice];"
-            f"[orig][voice]amix=inputs=2:duration=first:dropout_transition=2[aout]\" "
-            f"-map 0:v:0 -map \"[aout]\" -shortest {output_video}"
-        )
-        os.system(mix_command)
+            # Send final video
+            with open(final_video, "rb") as vid:
+                await context.bot.send_video(chat_id=update.effective_chat.id, video=vid, caption="🎬 သင့်ရဲ့ Movie Recap ဗီဒီယို အဆင်သင့်ဖြစ်ပါပြီ!")
 
-        with open(srt_path, "w", encoding="utf-8") as srt_file:
-            srt_file.write("1\n00:00:00,000 --> 00:00:15,000\n" + burmese_text[:150] + "\n\n")
-            srt_file.write("2\n00:00:15,000 --> 00:00:35,000\n" + burmese_text[150:400] + "\n\n")
-
-        await message.reply_video(open(output_video, 'rb'), caption="🎬 ပြီးပြည့်စုံသော Smart Audio Movie Recap ဗီဒီယို")
-        await message.reply_document(open(srt_path, 'rb'), caption="📄 Recap SRT Subtitle ဖိုင်")
-
-        del user_states[user_id]
-
-    except Exception as e:
-        await message.reply_text(f"❌ Error ဖြစ်သွားပါသည် bro: {str(e)}")
+        except Exception as e:
+            logger.error(f"Processing error: {e}")
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ ဗီဒီယိုထုတ်လုပ်ရာတွင် အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်။")
 
 def main():
-    threading.Thread(target=run_web_server, daemon=True).start()
+    application = Application.builder().token(BOT_TOKEN).build()
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.VIDEO, handle_video))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(CallbackQueryHandler(button_callback))
-    
-    print("🤖 Advanced Movie Recap Bot စတင်လည်ပတ်နေပြီ...")
-    app.run_polling()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    application.add_handler(CallbackQueryHandler(button_callback))
 
-if __name__ == '__main__':
+    application.run_polling()
+
+if __name__ == "__main__":
     main()
