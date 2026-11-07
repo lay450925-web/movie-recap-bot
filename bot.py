@@ -3,7 +3,6 @@ import logging
 import asyncio
 import yt_dlp
 import edge_tts
-import whisper
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -15,11 +14,6 @@ logging.basicConfig(
 )
 
 BOT_TOKEN = "9174538419:AAGV5mHqizy_Jr_ZGKu1LisXEV3DlCU_z8k"
-
-# Whisper Model ကို ကြိုတင် Load လုပ်ထားခြင်း (tiny model က Render ပေါ်မှာ မြန်ဆန်ပြီး RAM စားသက်သာပါတယ်)
-print("📥 Loading Whisper AI model...")
-whisper_model = whisper.load_model("tiny")
-print("✅ Whisper model loaded successfully!")
 
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -33,7 +27,7 @@ def run_web_server():
     server.serve_forever()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("မင်္ဂလာပါ bro! TikTok လင့်ခ์ ပို့ပေးပါ၊ မူရင်းအင်္ဂလိပ်အသံကို မြန်မာလို အမှန်တကယ် ဘာသာပြန် recap လုပ်ပေးမယ့် ဗီဒီယို ဖန်တီးပေးပါမယ်။")
+    await update.message.reply_text("မင်္ဂလာပါ bro! TikTok လင့်ခ์ ပို့ပေးပါ၊ Movie Recap ဗီဒီယို အမြန်ဆုံး ဖန်တီးပေးပါမယ်။")
 
 async def generate_tts(text: str, output_file: str):
     voice = "my-MM-NilarNeural"
@@ -45,7 +39,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("📥 ဗီဒီယိုလင့်ခ์ကို လက်ခံရရှိပါပြီ။ `yt-dlp` ဖြင့် Download ဆွဲနေပါသည်...")
     
     try:
-        # 1. Video Download
+        # 1. Video Download & Info extraction
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'outtmpl': 'downloaded_video.mp4',
@@ -54,43 +48,28 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        
-        await msg.edit_text("🔍 မူရင်းဗီဒီယိုမှ အသံကို ထုတ်ယူပြီး AI ဖြင့် စာသားဖတ်ရှုနေပါပြီ (Whisper)...")
+            info = ydl.extract_info(url, download=True)
+            video_title = info.get('title', 'ဇာတ်လမ်းအကျဉ်း')
 
-        # 2. Extract Audio
-        extracted_audio = "extracted_audio.mp3"
-        os.system(f"ffmpeg -y -i downloaded_video.mp4 -q:a 0 -map a {extracted_audio}")
+        await msg.edit_text("🎙️ ဗီဒီယို ဒေါင်းလုဒ်ပြီးပါပြီ။ မြန်မာ AI ဇာတ်လမ်းအသံ ဖန်တီးနေပါသည်...")
 
-        # 3. Transcribe Audio using Whisper (Detect English Speech)
-        result = whisper_model.transcribe(extracted_audio)
-        english_text = result["text"].strip()
-        print(f"Detected English Text: {english_text}")
-
-        await msg.edit_text("🇲🇲 မူရင်းအင်္ဂလိပ်စာသားကို မြန်မာလို ဘာသာပြန်ဆို၍ AI အသံဖိုင် ဖန်တီးနေပါပြီ...")
-
-        # 4. Simple translation simulation / Burmese adaptation 
-        # (မူရင်းပြောတဲ့ အင်္ဂလိပ်စာသားအပေါ်မူတည်ပြီး မြန်မာလို ပြန်ဆိုမည့် ဇာတ်ကြောင်း)
-        if english_text:
-            recap_script = f"ဒီဗီဒီယိုထဲမှာတော့ အင်္ဂလိပ်လို ဒီလိုပြောထားပါတယ် - {english_text}။ ဒါကတော့ ဇာတ်လမ်းရဲ့ အဓိက အကျဉ်းချုပ်ပဲ ဖြစ်ပါတယ်။"
-        else:
-            recap_script = "ဒီဗီဒီယိုလေးရဲ့ ဇာတ်လမ်းအကျဉ်းကို မြန်မာလို တင်ဆက်ပေးလိုက်ပါတယ်။"
-
+        # 2. Generate Burmese AI Voiceover based on video title/context
+        recap_script = f"ဒီဗီဒီယိုလေးရဲ့ ဇာတ်လမ်းအကျဉ်းကတော့ {video_title} ပဲ ဖြစ်ပါတယ်။ ဆက်လက်ကြည့်ရှုပေးကြပါဦးခင်ဗျာ။"
         audio_path = "output_voice.mp3"
         await generate_tts(recap_script, audio_path)
 
         await msg.edit_text("🎬 ဗီဒီယိုနှင့် မြန်မာ AI အသံဖိုင်ကို FFmpeg ဖြင့် ပေါင်းစပ်နေပါသည်...")
 
-        # 5. Merge Video and New Burmese Audio
+        # 3. Merge Video and Audio using FFmpeg
         output_video = "final_recap.mp4"
         command = f"ffmpeg -y -i downloaded_video.mp4 -i {audio_path} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest {output_video}"
         os.system(command)
 
-        await msg.edit_text("📤 Telegram ထဲသို့ ပြီးပြည့်စုံသော Final Recap ဗီဒီယို ပို့ဆောင်နေပါပြီ...")
+        await msg.edit_text("📤 Telegram ထဲသို့ Final Recap ဗီဒီယို ပို့ဆောင်နေပါပြီ...")
         
-        # 6. Send Final Video to Telegram
+        # 4. Send Final Video to Telegram
         with open(output_video, 'rb') as video_file:
-            await update.message.reply_video(video_file, caption="🎬 ပြီးပြည့်စုံသော မြန်မာ AI Voiceover Movie Recap ဗီဒီယို")
+            await update.message.reply_video(video_file, caption="🎬 ပြီးပြည့်စုံသော One-Click Movie Recap ဗီဒီယို")
         
         await msg.delete()
     except Exception as e:
