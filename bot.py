@@ -27,7 +27,7 @@ def run_web_server():
     server.serve_forever()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("မင်္ဂလာပါ bro! TikTok လင့်ခ์ ပို့ပေးပါ၊ Movie Recap ဗီဒီယို အစအဆုံး ဖန်တီးပေးပါမယ်။")
+    await update.message.reply_text("မင်္ဂလာပါ bro! TikTok လင့်ခ์ ပို့ပေးပါ၊ မူရင်းအသံကို မြန်မာလို Recap ပြန်လုပ်ပေးမယ့် Final Video ဖန်တီးပေးပါမယ်။")
 
 async def generate_tts(text: str, output_file: str):
     voice = "my-MM-NilarNeural"
@@ -50,26 +50,31 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
         
-        await msg.edit_text("🎙️ ဗီဒီယို ဒေါင်းလုဒ်ပြီးပါပြီ။ AI ဇာတ်လမ်းပြော အသံဖိုင် ဖန်တီးနေပါသည်...")
+        await msg.edit_text("🔍 မူရင်းဗီဒီယိုမှ အသံဖိုင်ကို ထုတ်ယူနေပါပြီ...")
 
-        # 2. Generate AI Voiceover
-        recap_script = "ဒီဗီဒီယိုလေးကတော့ One-Click Movie Recap Bot ရဲ့ အလိုအလျောက် ထုတ်လုပ်ထားတဲ့ ဇာတ်လမ်းအကျဉ်းပဲ ဖြစ်ပါတယ်။"
+        # 2. Extract Audio from Downloaded Video using FFmpeg
+        extracted_audio = "extracted_audio.mp3"
+        os.system(f"ffmpeg -y -i downloaded_video.mp4 -q:a 0 -map a {extracted_audio}")
+
+        await msg.edit_text("🇲🇲 မူရင်းအသံကို မြန်မာ AI အသံဖြင့် အသစ်ပြန်လည် ဖန်တီးနေပါပြီ...")
+
+        # 3. Generate Burmese AI Voiceover (bro လိုချင်သည့် မြန်မာ Recap ဇာတ်ကြောင်း)
+        recap_script = "ဒီဇာတ်လမ်းလေးကတော့ အလွန်တရာမှ စိတ်ဝင်စားစရာကောင်းတဲ့ အကြောင်းအရာလေးတစ်ခုပဲ ဖြစ်ပါတယ်။ ဆက်လက်ကြည့်ရှုပေးကြပါဦးခင်ဗျာ။"
         audio_path = "output_voice.mp3"
         await generate_tts(recap_script, audio_path)
 
-        await msg.edit_text("🎬 ဗီဒီယိုနှင့် AI အသံဖိုင်ကို FFmpeg ဖြင့် ပေါင်းစပ်နေပါသည်...")
+        await msg.edit_text("🎬 ဗီဒီယိုနှင့် မြန်မာ AI အသံဖိုင်ကို FFmpeg ဖြင့် ပေါင်းစပ်နေပါပြီ...")
 
-        # 3. Merge Video and Audio using FFmpeg
+        # 4. Merge Video and New Burmese Audio
         output_video = "final_recap.mp4"
-        # ဗီဒီယို မူရင်းအသံကို ဖယ်ပြီး AI အသံဖိုင်ကို အစားထိုးပေါင်းစပ်ခြင်း
         command = f"ffmpeg -y -i downloaded_video.mp4 -i {audio_path} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest {output_video}"
         os.system(command)
 
         await msg.edit_text("📤 Telegram ထဲသို့ Final Recap ဗီဒီယို ပို့ဆောင်နေပါပြီ...")
         
-        # 4. Send Final Video to Telegram
+        # 5. Send Final Video to Telegram
         with open(output_video, 'rb') as video_file:
-            await update.message.reply_video(video_file, caption="🎬 ပြီးပြည့်စုံသော One-Click Movie Recap ဗီဒီယို")
+            await update.message.reply_video(video_file, caption="🎬 ပြီးပြည့်စုံသော မြန်မာ AI Voiceover Movie Recap ဗီဒီယို")
         
         await msg.delete()
     except Exception as e:
